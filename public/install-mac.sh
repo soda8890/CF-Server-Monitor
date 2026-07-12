@@ -863,7 +863,7 @@ EOF
         fi
         REPORT_RESPONSE_FILE="${TEMP_DIR}/.cf_probe_response.$$"
         REPORT_HEADER_FILE="${TEMP_DIR}/.cf_probe_headers.$$"
-        REPORT_HTTP_CODE=$(curl -sS -D "$REPORT_HEADER_FILE" -o "$REPORT_RESPONSE_FILE" -w "%{http_code}" -X POST \
+        REPORT_HTTP_CODE=$(curl -skS -D "$REPORT_HEADER_FILE" -o "$REPORT_RESPONSE_FILE" -w "%{http_code}" -X POST \
             -H "Content-Type: application/json" \
             -H "X-Agent-Config-Schema: 1" \
             -H "X-Agent-Config-Md5: ${CONFIG_MD5:-none}" \

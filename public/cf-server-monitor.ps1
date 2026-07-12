@@ -17,7 +17,7 @@
 .PARAMETER Url
     Worker 上报地址
 .PARAMETER CollectInterval
-    数据采集间隔（秒），0 表示不额外缓存采样。
+    兼容参数。Windows PowerShell 版不使用 samples 采样缓存，始终按上报间隔采集并上报。
 .PARAMETER ReportInterval
     上报间隔（秒），默认 60
 .PARAMETER PingType
@@ -757,10 +757,12 @@ function Invoke-TrayCollectLoop {
     $statusItem.Text = "查看状态"
     $statusItem.Add_Click({
         $config = Load-Config
+        $effectiveStatusReportInterval = [math]::Max([int]$config.report_interval, 60)
         $msg = "CF-Server-Monitor 状态`n"
         $msg += "Server ID: $($config.server_id)`n"
         $msg += "Worker URL: $($config.worker_url)`n"
         $msg += "上报间隔: $($config.report_interval)秒`n"
+        $msg += "实际上报间隔: $effectiveStatusReportInterval秒`n"
         $msg += "日志文件: $LOG_FILE"
         [System.Windows.Forms.MessageBox]::Show($msg, "CF-Server-Monitor", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
     })
@@ -832,12 +834,6 @@ function Start-TimerCollectLoop {
     $secret = if ($Secret) { $Secret } else { $config.secret }
     $workerUrl = if ($Url) { $Url.Trim().Trim("'").Trim('"') } else { $config.worker_url.Trim().Trim("'").Trim('"') }
 
-    if ($null -ne $config.collect_interval) {
-        $collectInterval = [int]$config.collect_interval
-    } else {
-        $collectInterval = 0
-    }
-
     if ($config.report_interval) {
         $reportInterval = [int]$config.report_interval
     } else {
@@ -879,13 +875,10 @@ function Start-TimerCollectLoop {
         Write-Log "配置不完整，请填写 server_id, secret, worker_url" "ERROR"
         return
     }
-    if (@(0, 1, 2, 5, 10) -notcontains $collectInterval) { $collectInterval = 0 }
     if (@(30, 60, 120, 180) -notcontains $reportInterval) { $reportInterval = 60 }
     if (@('http', 'tcp') -notcontains $pingType) { $pingType = 'tcp' }
     if ($resetDay -lt 0 -or $resetDay -gt 31) { $resetDay = 1 }
-    if ($collectInterval -gt 0 -and $reportInterval -lt $collectInterval) {
-        $reportInterval = $collectInterval
-    }
+    $effectiveReportInterval = [math]::Max($reportInterval, 60)
 
     # ========================================
     # 持久状态变量（脚本作用域，跨 Timer Tick 保持）
@@ -904,12 +897,10 @@ function Start-TimerCollectLoop {
     $script:cs_lossCm = ""
     $script:cs_lossBd = ""
     $script:cs_lastReportTime = 0
-    $script:cs_collectInterval = $collectInterval
-    $script:cs_reportInterval = $reportInterval
+    $script:cs_reportInterval = $effectiveReportInterval
     $script:cs_pingType = $pingType
     $script:cs_resetDay = $resetDay
     $script:cs_configMd5 = $configMd5
-    $script:cs_samples = @()
 
     $pingTempFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "cf_probe_ping_results.json")
 
@@ -920,14 +911,13 @@ function Start-TimerCollectLoop {
         Start-Sleep -Milliseconds 300
     } catch {}
 
-    Write-Log "探针已启动。 ServerID=$serverId Url='$workerUrl' ReportInterval=${reportInterval}s CollectInterval=${collectInterval}s"
+    Write-Log "探针已启动。 ServerID=$serverId Url='$workerUrl' ReportInterval=${reportInterval}s EffectiveReportInterval=${effectiveReportInterval}s CollectInterval=ignored"
 
     # ========================================
     # Timer 驱动采集：每次 Tick 执行一轮采集+上报
     # ========================================
     $timer = New-Object System.Windows.Forms.Timer
-    $activeInterval = if ($collectInterval -gt 0) { $collectInterval } else { $reportInterval }
-    $timer.Interval = $activeInterval * 1000
+    $timer.Interval = $effectiveReportInterval * 1000
     $timer.Add_Tick({
         try {
             # 捕获外部参数到局部变量，避免作用域问题
@@ -938,7 +928,6 @@ function Start-TimerCollectLoop {
             $cuN = $cuNode
             $cmN = $cmNode
             $bdN = $bdNode
-            $cInterval = $script:cs_collectInterval
             $pType = $script:cs_pingType
             $rDay = $script:cs_resetDay
             $rInterval = $script:cs_reportInterval
@@ -1042,13 +1031,6 @@ function Start-TimerCollectLoop {
                 loss_bd = $script:cs_lossBd
             }
 
-            if ($cInterval -gt 0) {
-                $script:cs_samples += @{
-                    ts = $now * 1000
-                    metrics = $metrics.Clone()
-                }
-            }
-
             # 上报
             $shouldReport = ($script:cs_lastReportTime -eq 0) -or ($now - $script:cs_lastReportTime -ge $rInterval)
             if ($shouldReport) {
@@ -1056,11 +1038,8 @@ function Start-TimerCollectLoop {
                     id = $srvId
                     secret = $sec
                     metrics = $metrics
-                    collect_interval = $cInterval
+                    collect_interval = 0
                     report_interval = $rInterval
-                }
-                if ($cInterval -gt 0) {
-                    $payload.samples = @($script:cs_samples)
                 }
                 $json = $payload | ConvertTo-Json -Depth 10 -Compress
                 try {
@@ -1082,24 +1061,18 @@ function Start-TimerCollectLoop {
                             }
                         }
                         if (Save-Config -Config $config) {
-                            $script:cs_collectInterval = $remoteConfig.collect_interval
-                            $script:cs_reportInterval = $remoteConfig.report_interval
+                            $effectiveRemoteReportInterval = [math]::Max($remoteConfig.report_interval, 60)
+                            $script:cs_reportInterval = $effectiveRemoteReportInterval
                             $script:cs_pingType = $remoteConfig.ping_type
                             $script:cs_resetDay = $remoteConfig.reset_day
                             $script:cs_configMd5 = $remoteConfig.config_md5
-                            $nextActiveInterval = if ($remoteConfig.collect_interval -gt 0) {
-                                $remoteConfig.collect_interval
-                            } else {
-                                $remoteConfig.report_interval
-                            }
-                            $timer.Interval = $nextActiveInterval * 1000
-                            Write-Log "动态配置已应用: md5=$($remoteConfig.config_md5)" "INFO"
+                            $timer.Interval = $effectiveRemoteReportInterval * 1000
+                            Write-Log "动态配置已应用: md5=$($remoteConfig.config_md5) report_interval=$($remoteConfig.report_interval)s effective_report_interval=${effectiveRemoteReportInterval}s" "INFO"
                         }
                     }
                 } catch {
                     Write-Log "上报失败: $_" "WARN"
                 }
-                $script:cs_samples = @()
                 $script:cs_lastReportTime = $now
             }
         } catch {
@@ -1229,6 +1202,8 @@ function Install-Service {
 
     Register-ScheduledTask -TaskName $TASK_NAME -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest -Force | Out-Null
 
+    $effectiveInstallReportInterval = [math]::Max([int]$config.report_interval, 60)
+
     Write-Host ""
     Write-Host "=============================================" -ForegroundColor Green
     Write-Host "       CF-Server-Monitor 安装成功" -ForegroundColor Green
@@ -1236,6 +1211,7 @@ function Install-Service {
     Write-Host "  Server ID  : $($config.server_id)"
     Write-Host "  Worker URL : $($config.worker_url)"
     Write-Host "  上报间隔   : $($config.report_interval)秒"
+    Write-Host "  实际间隔   : $effectiveInstallReportInterval秒"
     Write-Host "  采样间隔   : Windows PowerShell 版不启用 samples 缓存"
     Write-Host "  探测类型   : $($config.ping_type)"
     Write-Host "  流量重置日 : $($config.reset_day)号"
@@ -1365,10 +1341,12 @@ function Get-ServiceStatus {
     }
     $config = Load-Config
     if ($config) {
+        $effectiveStatusReportInterval = [math]::Max([int]$config.report_interval, 60)
         Write-Host "配置文件: $CONFIG_FILE" -ForegroundColor Cyan
         Write-Host "  Server ID  : $($config.server_id)"
         Write-Host "  Worker URL : $($config.worker_url)"
         Write-Host "  上报间隔   : $($config.report_interval)秒"
+        Write-Host "  实际间隔   : $effectiveStatusReportInterval秒"
     }
 }
 
