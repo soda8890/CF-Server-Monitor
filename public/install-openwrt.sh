@@ -39,9 +39,9 @@ mkdir -p /usr/local/bin /var/run /var/log 2>/dev/null || true
 # 统一输出工具（纯 POSIX sh）
 # ---------------------------------------------------------------
 print_banner() {
-    printf '%b╔══════════════════════════════════════════════════╗%b\n' "${CYAN}" "${NC}"
-    printf '%b║     CF-Server-Monitor 探针管理工具 (OpenWrt)     ║%b\n' "${CYAN}" "${NC}"
-    printf '%b╚══════════════════════════════════════════════════╝%b\n' "${CYAN}" "${NC}"
+    printf '%b╔═════════════════════════════════════╗%b\n' "${CYAN}" "${NC}"
+    printf '%b║     CF-Server-Monitor (OpenWrt)     ║%b\n' "${CYAN}" "${NC}"
+    printf '%b╚═════════════════════════════════════╝%b\n' "${CYAN}" "${NC}"
 }
 
 info()  { printf '%b[✓]%b %s\n' "${GREEN}" "${NC}" "$1"; }

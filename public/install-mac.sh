@@ -25,9 +25,9 @@ LOG_FILE="/var/log/cf-probe.log"
 TEMP_DIR="/tmp/cf-probe"
 
 print_banner() {
-    echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║   CF-Server-Monitor 探针管理工具 (macOS Edition) ║${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}╔═════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║   CF-Server-Monitor (macOS Edition) ║${NC}"
+    echo -e "${CYAN}╚═════════════════════════════════════╝${NC}"
 }
 
 info() { echo -e "${GREEN}[✓]${NC} $1"; }

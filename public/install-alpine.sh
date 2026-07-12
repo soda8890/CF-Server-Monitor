@@ -35,9 +35,9 @@ LOG_FILE="/var/log/${SERVICE_NAME}.log"
 # 统一输出工具
 # ---------------------------------------------------------------
 print_banner() {
-    printf '%b╔══════════════════════════════════════════════════╗%b\n' "${CYAN}" "${NC}"
-    printf '%b║     CF-Server-Monitor 探针管理工具 (Alpine)      ║%b\n' "${CYAN}" "${NC}"
-    printf '%b╚══════════════════════════════════════════════════╝%b\n' "${CYAN}" "${NC}"
+    printf '%b╔═════════════════════════════════════╗%b\n' "${CYAN}" "${NC}"
+    printf '%b║     CF-Server-Monitor (Alpine)      ║%b\n' "${CYAN}" "${NC}"
+    printf '%b╚═════════════════════════════════════╝%b\n' "${CYAN}" "${NC}"
 }
 
 info()  { printf '%b[✓]%b %s\n' "${GREEN}" "${NC}" "$1"; }
