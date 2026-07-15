@@ -642,10 +642,13 @@ const updateChartsTheme = (theme) => {
   })
 }
 
-// ≤1h: 5分钟阈值; >1h: 总时长/80 * 1.1
+const { onThemeChange } = useTheme()
+onThemeChange(updateChartsTheme)
+
+// ≤1h: gap超过5分钟断线; >1h: 总时长/80，最低5分钟基础阈值
 const getHistoryGapBreakMs = (hours = currentHours.value) => {
   if (hours <= 1) return 5 * 60 * 1000
-  return Math.ceil(hours * 60 * 60 * 1000 / 80) * 1.1
+  return Math.max(5 * 60 * 1000, Math.ceil(hours * 60 * 60 * 1000 / 80))
 }
 
 const shouldBreakGap = (prevPoint, nextPoint) => {
@@ -655,8 +658,8 @@ const shouldBreakGap = (prevPoint, nextPoint) => {
   if (!Number.isFinite(prevTime) || !Number.isFinite(nextTime)) return false
   const gap = nextTime - prevTime
   const breakThreshold = getHistoryGapBreakMs()
-  if (breakThreshold < 5 * 60 * 1000) return false
-  return gap > breakThreshold * 2
+  if (currentHours.value <= 1) return gap > breakThreshold
+  return gap > breakThreshold * 1.1
 }
 
 const applyGapBreak = (data) => {
@@ -818,6 +821,13 @@ const loadAllHistory = async (hours) => {
       })
     })
   } catch (e) {
+    if (e && e.status === 401) {
+      showLoginModal.value = true
+      currentHours.value = 0.167
+      historyLoaded.value = true
+      return
+    }
+
     if (e && e.message === 'databaseUpgradeRequired') {
       if (!databaseUpgradeAlertShown) {
         databaseUpgradeAlertShown = true
@@ -1021,9 +1031,6 @@ const init = async () => {
   await initChartsOnMount()
 
   loadAllHistory(currentHours.value)
-
-  const { onThemeChange } = useTheme()
-  onThemeChange(updateChartsTheme)
 
   liveSocket = createLiveSocket(String(serverId), {
     onUpdate: ({ serverId: sid, data }) => {

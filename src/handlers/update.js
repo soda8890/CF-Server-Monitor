@@ -1,8 +1,17 @@
 import { saveMetricsHistory } from '../database/schema.js';
-import { getServerDetail } from '../utils/cache.js';
+import { getServerDetail, clearServerDetailCache } from '../utils/cache.js';
 import { mergeMetricsIntoServer } from '../utils/metrics.js';
 import { createErrorResponse, createUnauthorizedResponse, createNotFoundResponse, createBadRequestResponse } from '../utils/errors.js';
 import { ensureServerOptimization } from '../database/indexOptimization.js';
+import { loadSiteSettings } from '../utils/settings.js';
+import {
+  AGENT_CONFIG_MD5_HEADER,
+  AGENT_CONFIG_SCHEMA_HEADER,
+  AGENT_CONFIG_SCHEMA_VERSION,
+  describeAgentConfig,
+  isValidTrafficCorrection,
+  serializeCorrection
+} from '../utils/agentConfig.js';
 
 // 将最新一次上报打包成前端可直接消费的 "当前状态" 对象
 // 与 /api/server 和 /api/servers 返回的字段保持一致，便于页面直接合并
@@ -33,6 +42,11 @@ function normalizeTimestamp(value, fallback = Date.now()) {
 
 function logUpdateBadRequest(reason, details = {}) {
   console.warn('[Update] 400 Bad Request:', reason, details);
+}
+
+function normalizeCorrectionValue(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  return isValidTrafficCorrection(value) ? Number(value) : null;
 }
 
 function normalizeMetricSamples(data) {
@@ -142,6 +156,32 @@ export async function handleUpdate(request, env, ctx) {
       return createNotFoundResponse('Server not found');
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(data, 'rx_correction') ||
+      Object.prototype.hasOwnProperty.call(data, 'tx_correction')
+    ) {
+      const ackRx = normalizeCorrectionValue(data.rx_correction);
+      const ackTx = normalizeCorrectionValue(data.tx_correction);
+      if (ackRx === null || ackTx === null) {
+        return createBadRequestResponse('Invalid correction');
+      }
+
+      await env.DB.prepare(`
+        UPDATE servers
+        SET rx_correction = NULL, tx_correction = NULL
+        WHERE id = ?
+          AND (rx_correction IS NOT NULL OR tx_correction IS NOT NULL)
+          AND ABS(COALESCE(rx_correction, 0) - ?) < 0.000001
+          AND ABS(COALESCE(tx_correction, 0) - ?) < 0.000001
+      `).bind(id, ackRx, ackTx).run();
+      clearServerDetailCache();
+
+      return new Response('OK', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+
     // 从缓存中获取历史记录分区 ID
     const historyPartitionId = serverDetail.history_partition_id;
     if(!historyPartitionId) {
@@ -173,7 +213,49 @@ export async function handleUpdate(request, env, ctx) {
     queueBroadcastSamples(id, broadcastSamples);
     ctx.waitUntil(_ensureBatchFlush(env));
 
-    return new Response('OK', { status: 200 });
+    const clientConfigSchema = request.headers.get(AGENT_CONFIG_SCHEMA_HEADER);
+    if (clientConfigSchema !== String(AGENT_CONFIG_SCHEMA_VERSION)) {
+      return new Response('OK', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+
+    try {
+      const settings = await loadSiteSettings(env.DB);
+      const descriptor = await describeAgentConfig(serverDetail, settings);
+      const clientConfigMd5 = (request.headers.get(AGENT_CONFIG_MD5_HEADER) || '').trim().toLowerCase();
+      const hasCorrection = descriptor.correction !== null;
+      const md5Changed = clientConfigMd5 !== descriptor.md5;
+      const responseHeaders = {
+        'Cache-Control': 'no-store',
+        [AGENT_CONFIG_SCHEMA_HEADER]: String(AGENT_CONFIG_SCHEMA_VERSION),
+        [AGENT_CONFIG_MD5_HEADER]: descriptor.md5
+      };
+
+      if (!md5Changed && !hasCorrection) {
+        return new Response(null, { status: 204, headers: responseHeaders });
+      }
+
+      let body = descriptor.serialized;
+      if (hasCorrection) {
+        body += serializeCorrection(descriptor.correction);
+      }
+
+      return new Response(body, {
+        status: 200,
+        headers: {
+          ...responseHeaders,
+          'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8'
+        }
+      });
+    } catch (configError) {
+      console.warn('[Update] Failed to build agent configuration:', configError?.message || configError);
+      return new Response('OK', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
   } catch (e) {
     return createErrorResponse(e);
   }

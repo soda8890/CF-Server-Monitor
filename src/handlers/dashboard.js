@@ -2,8 +2,14 @@ import { checkAuth, simpleAuthResponse } from '../middleware/auth.js';
 import { getLatestMetrics, getLatestMetricsForAllServers } from '../database/schema.js';
 import { getAllServers, getServerDetail } from '../utils/cache.js';
 import { mergeMetricsIntoServer } from '../utils/metrics.js';
-import { DEFAULT_SITE_TITLE } from '../utils/settings.js';
 import { createSuccessResponse, createBadRequestResponse, createNotFoundResponse } from '../utils/errors.js';
+
+function withoutPrivateServerFields(server) {
+  const item = { ...server };
+  delete item.bandwidth;
+  delete item.note;
+  return item;
+}
 
 export async function handleServerAPI(request, env, sys) {
   const isLoggedIn = await checkAuth(request, env, sys);
@@ -26,7 +32,7 @@ export async function handleServerAPI(request, env, sys) {
     show_long_history: sys.show_long_history === 'true'
   };
   
-  return createSuccessResponse(server);
+  return createSuccessResponse(withoutPrivateServerFields(server));
 }
 
 export async function handleServersAPI(request, env, sys) {
@@ -36,7 +42,7 @@ export async function handleServersAPI(request, env, sys) {
     return simpleAuthResponse();
   }
   
-  const results = await getAllServers(env.DB, isLoggedIn);
+  const results = (await getAllServers(env.DB, isLoggedIn)).map(withoutPrivateServerFields);
   
   const latestMetricsMap = await getLatestMetricsForAllServers(env.DB);
   
@@ -87,10 +93,8 @@ export async function handleServersAPI(request, env, sys) {
     sysConfig: {
       show_price: sys.show_price === 'true',
       show_expire: sys.show_expire === 'true',
-      show_bw: sys.show_bw === 'true',
       show_tf: sys.show_tf === 'true',
-      show_time: sys.show_time === 'true',
-      site_title: sys.site_title || DEFAULT_SITE_TITLE
+      show_time: sys.show_time === 'true'
     }
   };
 

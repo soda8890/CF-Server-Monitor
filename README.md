@@ -1,25 +1,33 @@
 # [CF-Server-Monitor](https://github.com/huilang-me/CF-Server-Monitor)
 
-一个基于 Cloudflare Workers + D1 + Durable Objects 的多服务器监控探针系统，支持实时监控、历史数据查看、延迟追踪、地图展示等功能。兼容主流Linux系统，Alpine Linux，OpenWrt，Windows系统。**演示地址**：<https://demo.huilang.me/>
+一个基于 Cloudflare Workers + D1 + Durable Objects 的多服务器监控探针系统，支持实时监控、历史数据查看、延迟追踪、地图展示等功能。兼容主流 Linux 系统、Alpine Linux、OpenWrt、macOS（Intel / Apple Silicon）、Windows 系统。
 
-**当前版本：V2.7.9 Beta**
+**演示地址**：<https://demo.huilang.me/>
 
-> [!IMPORTANT]
-> **🚨 紧急安全/性能更新 (v2.7.8)**
-> 
-> 本次版本修复了 **月度任务导致数据表索引丢失** 的严重 Bug。该问题影响 **v2.7.0 ~ v2.7.7** 所有版本。
-> 
-> ⚠️ **潜在影响**：此 Bug 会严重增加 D1 读行消耗，**可能导致免费额度超限，造成服务不可用**。
-> 
-> **👉 请所有用户务必立即升级！**
+**当前版本：V2.7.10 Beta**
+
+> [!NOTE]
+> **对比其他探针的优势**
+>
+> - 免费托管在 Cloudflare，稳定性比自己服务器还高，超出免费额度也不扣费。目前支持 60+ 台监控，调整成 120 秒上报间隔后可以翻倍。
+> - 安全：无 WebSSH、无命令下发、单向上报，没有所谓的“主控”；Workers 项目只是一个纯收集数据和展示的平台。
+> - 客户端只需一个非常简单的 [install.sh](https://github.com/huilang-me/CF-Server-Monitor/blob/main/public/install.sh) 脚本，不依赖 Go 之类的语言，原生支持，非常轻量。
+> - 其他探针该有的功能基本都有，后续会继续完善。
+>
+> **对比其他探针的缺点**
+>
+> - 数据目前仅保留 7 天，虽然免费额度够，但还是做了限制。
+> - 探针脚本不能自动升级，这是出于安全考虑；有需要可以自行创建定时任务更新。大多数版本都可以平滑升级，不升级也可以正常使用原有功能，但新增功能可能会丢失。
+> - 主题比较缺乏；主题已经可以独立开发、纯静态调用，目前社区活跃度还不够，后期将继续完善。
 
 <details>
 <summary>更新记录</summary>
 
-- V2.7.9 Beta 修改数据库结构，减少一半D1写入消耗，理论上支持60+服务器监控，其他bug修复
+- V2.7.10 Beta 重构前端 admin 模块，新增 iOS Scriptable 小组件，新增 tags、note 字段
+- V2.7.9 修改数据库结构，减少一半D1写入消耗，理论上支持60+服务器监控，在保证安全的基础上，增加服务器参数下发功能。
 - V2.7.8 修复月度任务导致数据表索引丢失的严重 Bug
 - V2.7.7 添加GitHub Page部署支持，添加飞书，Bark通知支持
-- V2.7.6 添加多站点支持包括验证码登录等，添加Windows PowerShell无依赖安装脚本，一些安全优化
+- V2.7.6 添加多站点支持，包括验证码登录等，添加 Windows PowerShell 无依赖安装脚本，一些安全优化
 - V2.7.5 DO WebSocket改成 DO WebSocket Hibernation基本剔除DO Duration消耗，新增批量推送入口，每5秒批量接收多个服务器更新，减少 DO 请求次数。
 - V2.7.4 添加允许跨域配置，为后续版本额外功能做铺垫，前端加上跨域配置，修改成HASH模式，修改country为region，数据库自动维护
 - V2.7.3.3 压缩定时任务4个为2个，避免超出免费额度
@@ -40,12 +48,13 @@
 - V2.6.0 降低了 50% 的D1写入消耗，强烈建议升级，升级后请在后台手动点击 升级数据库 或者 重建数据库 。
 - V2.5.0 增加客户端上报数据后，在不占用D1消耗的情况下，前端WebSocket实时刷新数据
 - V2.4.0 版本主要优化了D1读写占用，使项目消耗大大降低，以及增加了防护避免被刷。
+
 </details>
 
 ## ✨ 功能特点
 
 - 📊 **实时监控**：CPU、GPU、内存、磁盘、网络、进程数、连接数、负载均衡
-- 📈 **历史图表**：支持7天历史数据查看
+- 📈 **历史图表**：支持 7 天历史数据查看
 - 🌍 **全球地图**：可视化展示服务器分布
 - 🔔 **离线告警**：支持 Telegram、企业微信 / 飞书 / Bark 通知
 - 📱 **响应式**：支持桌面端和移动端
@@ -54,6 +63,7 @@
 - 🔒 **服务器隐藏**：可设置特定服务器对非登录用户隐藏
 - ↕️ **拖拽排序**：后台拖拽调整服务器显示顺序
 - 🌐 **双语支持**：支持中文和英文界面自由切换
+- 🧩 **多站点支持**：可配置多个 API 站点聚合展示，详情页与后台按站点独立访问
 - 🧪 **本地测试**：支持本地模拟数据生成，方便开发和测试
 - 🔐 **Turnstile 验证**：集成 Cloudflare Turnstile 人机验证，增强 API 安全性
 - 🔑 **JWT 认证**：登录系统采用 JWT token 认证，支持自定义密钥
@@ -150,20 +160,7 @@
 
 #### 方式一：自动部署
 
-推送代码到 `main` 分支即可自动部署：
-
-```bash
-# 克隆你 Fork 的仓库
-git clone https://github.com/你的用户名/CF-Server-Monitor.git
-cd CF-Server-Monitor
-
-# 可选：修改配置后提交
-git add .
-git commit -m "Initial setup"
-git push origin main
-```
-
-推送后，GitHub Actions 会自动部署。在仓库的 **Actions** 标签页可查看部署进度。
+推送代码到 `main` 分支，GitHub Actions 会自动部署。在仓库的 **Actions** 标签页可查看部署进度。
 
 #### 方式二：手动部署
 
@@ -203,7 +200,7 @@ git push origin main
 部署成功后，访问管理后台：
 
 ```
-https://你的项目名.你的子域.workers.dev/#admin
+https://你的项目名.你的子域.workers.dev/#/admin
 ```
 
 - 用户名：默认admin，如果设置了环境变量 `API_USER_NAME`，则使用该值
@@ -245,43 +242,39 @@ OpenWrt / LEDE / ImmortalWrt 系统
 curl -sL https://你的项目.你的子域.workers.dev/install-openwrt.sh | sh -s install -id=<SERVER_ID> -secret=<SECRET> -url=<WORKER_URL> [-collect_interval=0] [-interval=60] [-ping=http] [-ct=xxx] [-cu=xxx] [-cm=xxx] [-bd=xxx] [-reset_day=1] [-rx_correction=N] [-tx_correction=N]
 ```
 
+### macOS 系统安装
+
+支持 macOS Intel 和 Apple Silicon（M1/M2/M3/M4），使用 `sudo` 执行安装脚本：
+
+```bash
+curl -sL https://你的项目.你的子域.workers.dev/install-mac.sh | sudo bash -s install -id=<SERVER_ID> -secret=<SECRET> -url=<WORKER_URL> [-collect_interval=0] [-interval=60] [-ping=http] [-ct=xxx] [-cu=xxx] [-cm=xxx] [-bd=xxx] [-reset_day=1] [-rx_correction=N] [-tx_correction=N]
+```
+
 ### Windows 系统安装
 
 ```powershell
 irm https://你的项目.你的子域.workers.dev/cf-server-monitor.ps1 -OutFile cf-server-monitor.ps1; powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 install -Id <SERVER_ID> -Secret <SECRET> -Url <WORKER_URL> [-ReportInterval=60] [-PingType=tcp] [-CtNode=xxx] [-CuNode=xxx] [-CmNode=xxx] [-BdNode=xxx] [-ResetDay=1]
 ```
 
-**其他命令**
-
-```powershell
-# 停止探针
-powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 stop
-
-# 查看状态
-powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 status
-
-# 卸载服务
-powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 uninstall
-```
-----
+***
 
 ### 参数说明
 
-| 参数               | 说明                      | 默认值    |
-| ---------------- | ----------------------- | ------ |
-| `-id`            | 服务器唯一标识符（必填）            | -      |
-| `-secret`        | API 认证密钥（必填）            | -      |
-| `-url`           | Worker 上报地址（必填）         | -      |
+| 参数                  | 说明                           | 默认值    |
+| ------------------- | ---------------------------- | ------ |
+| `-id`               | 服务器唯一标识符（必填）                 | -      |
+| `-secret`           | API 认证密钥（必填）                 | -      |
+| `-url`              | Worker 上报地址（必填）              | -      |
 | `-collect_interval` | 数据采集间隔（秒），`0` 表示不额外采集并使用单条上报 | `0`    |
-| `-interval`      | 数据上报间隔（秒）               | `60`   |
-| `-ping`          | Ping 检测类型（`http`/`tcp`） | `http` |
-| `-ct`            | 自定义CT测试节点               | 默认节点   |
-| `-cu`            | 自定义CU测试节点               | 默认节点   |
-| `-cm`            | 自定义CM测试节点               | 默认节点   |
-| `-bd`            | 自定义BD测试节点               | 默认节点   |
-| `-reset_day`     | 流量重置日（1-31）             | `1`    |
-| `-rx_correction` | 下行流量校正（GB，直接设置当月下行数据）   | -      |
-| `-tx_correction` | 上行流量校正（GB，直接设置当月上行数据）   | -      |
+| `-interval`         | 数据上报间隔（秒）                    | `60`   |
+| `-ping`             | Ping 检测类型（`http`/`tcp`）      | `http` |
+| `-ct`               | 自定义CT测试节点                    | 默认节点   |
+| `-cu`               | 自定义CU测试节点                    | 默认节点   |
+| `-cm`               | 自定义CM测试节点                    | 默认节点   |
+| `-bd`               | 自定义BD测试节点                    | 默认节点   |
+| `-reset_day`        | 流量重置日（1-31）                  | `1`    |
+| `-rx_correction`    | 下行流量校正（GB，直接设置当月下行数据）        | -      |
+| `-tx_correction`    | 上行流量校正（GB，直接设置当月上行数据）        | -      |
 
 > **注意**：`-collect_interval` 控制本机额外采集频率，`-interval` 控制向 Worker 上报频率。默认 `0` 为兼容模式：不额外采集，只按上报间隔发送单条数据；设置为 `1` 时才会 1 秒采集、按上报间隔批量发送。上报间隔越短，API 调用和数据库写入越多。
 
@@ -300,28 +293,6 @@ powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 uninstall
 2. 点击 **Sync fork** → **Update branch** 同步上游更新
 3. Cloudflare Workers 会自动检测到代码变更并重新部署
 
-或者使用命令行同步：
-
-```bash
-# 进入本地仓库目录
-cd CF-Server-Monitor
-
-# 添加上游仓库（首次需要）
-git remote add upstream https://github.com/huilang-me/CF-Server-Monitor.git
-
-# 拉取上游更新
-git fetch upstream
-
-# 合并到本地 main 分支
-git checkout main
-git merge upstream/main
-
-# 推送到您的仓库
-git push origin main
-```
-
-推送后 Cloudflare Workers 会自动部署最新版本。
-
 ### 方式二：GitHub Action 自动部署
 
 与方式一类似，同步上游仓库后推送即可：
@@ -329,11 +300,6 @@ git push origin main
 1. 同步上游仓库（参考方式一的步骤）
 2. 推送代码后 GitHub Actions 会自动触发部署
 3. 在仓库的 **Actions** 标签页查看部署进度
-
-也可以手动触发部署：
-
-1. 进入 GitHub 仓库 → **Actions** → **Deploy to Cloudflare Workers**
-2. 点击 **Run workflow** → 选择分支 → **Run workflow**
 
 ### 方式三：一键部署
 
@@ -360,14 +326,23 @@ curl -sL https://你的项目.你的子域.workers.dev/install.sh | bash -s inst
 curl -sL https://你的项目.你的子域.workers.dev/install-alpine.sh | sh -s install
 # OpenWrt
 curl -sL https://你的项目.你的子域.workers.dev/install-openwrt.sh | sh -s install
+# macOS
+curl -sL https://你的项目.你的子域.workers.dev/install-mac.sh | sudo bash -s install
+# Windows
+irm https://你的项目.你的子域.workers.dev/cf-server-monitor.ps1 -OutFile cf-server-monitor.ps1; powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 install
 ```
+
+> **V2.7.9 及以上说明**：从 V2.7.8 或更早版本升级后，请重新安装一次探针以启用参数下发能力。之后在后台修改服务器参数会自动下发到探针，无需每次重新安装；受上报间隔和缓存影响，最长约 240 秒才能看到效果。
+
 为了安全，没有提供自动升级功能，如有需要自行将升级脚本加入服务器定时任务。
 
 比如 crontab -e 中添加以下内容，每天凌晨 0 点执行升级：
+
 ```bash
 # Linux
 0 0 * * * curl -sL https://你的项目.你的子域.workers.dev/install.sh | bash -s install
 ```
+
 </details>
 
 <details>
@@ -380,18 +355,11 @@ curl -sL https://你的项目.你的子域.workers.dev/install.sh | bash -s unin
 curl -sL https://你的项目.你的子域.workers.dev/install-alpine.sh | sh -s uninstall
 # OpenWrt
 curl -sL https://你的项目.你的子域.workers.dev/install-openwrt.sh | sh -s uninstall
+# macOS
+curl -sL https://你的项目.你的子域.workers.dev/install-mac.sh | sudo bash -s uninstall
+# Windows
+irm https://你的项目.你的子域.workers.dev/cf-server-monitor.ps1 -OutFile cf-server-monitor.ps1; powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 uninstall
 ```
-
-Windows 系统（PowerShell 版）
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\cf-server-monitor.ps1 uninstall
-```
-
-Windows 系统（Python 版）
-
-启动cf-server-monitor.pyw后，GUI中关闭自启动（如已开启）。点删除，再删除这个文件即可
-
 </details>
 
 <details>
@@ -399,7 +367,7 @@ Windows 系统（Python 版）
 
 ### Turnstile 配置（可选）
 
-如需启用 Turnstile 人机验证，可用基本拦截恶意攻击避免额度超出，需在管理后台配置：
+如需启用 Turnstile 人机验证，可用于基本拦截恶意攻击，避免额度超出，需在管理后台配置：
 
 1. 登录 [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
 2. 创建站点，获取 **Site Key** 和 **Secret Key**
@@ -462,6 +430,7 @@ Windows 系统（Python 版）
 1. 获取 Bark 推送链接，比如 `https://api.day.app/xxxxxxx/自定义内容`，删掉中文，保留 `https://api.day.app/xxxxxxx/`
 2. 将链接填入 **Bot Token** 字段
 3. **Chat ID** 留空
+4. 如果是自建 Bark 服务，格式为 `bark:https://example.com/xxxxxxx/`
 
 ### Server 酱
 
@@ -484,10 +453,10 @@ Windows 系统（Python 版）
 
 ### 告警类型
 
-| 类型 | 说明 |
-| --- | --- |
+| 类型   | 说明                       |
+| ---- | ------------------------ |
 | 离线告警 | 节点离线 5 分钟后发送告警，恢复后发送恢复通知 |
-| 到期提醒 | 服务器到期前 7 天内每天发送提醒 |
+| 到期提醒 | 服务器到期前 7 天内每天发送提醒        |
 
 ### 测试通知
 
@@ -512,11 +481,29 @@ Windows 系统（Python 版）
 点击任意服务器卡片进入详情页：
 
 - 实时 CPU/GPU/内存/磁盘/网络/负载
-- 7天历史趋势图
+- 7 天历史趋势图
 - 鼠标悬停查看具体时间点的数值
 - 国内四线路延迟与丢包率追踪
 
-> **注意**：查看1小时以上的历史数据需要登录管理员账户。
+> **注意**：查看 1 小时以上的历史数据需要登录管理员账户。
+
+### iOS Scriptable 小组件
+
+项目提供了 iOS Scriptable 小组件脚本：[scripts/ios-scriptable-widget.js](scripts/ios-scriptable-widget.js)。
+
+使用方式：
+
+1. 在 iPhone 安装 [Scriptable](https://scriptable.app/)。
+2. 将 [scripts/ios-scriptable-widget.js](https://github.com/huilang-me/CF-Server-Monitor/raw/refs/heads/main/scripts/ios-scriptable-widget.js) 内容复制到 Scriptable 新脚本中。
+3. 修改脚本顶部的 `CONFIG.baseURL` 为你的站点地址，例如 `https://status.example.com`。
+4. 添加 Scriptable 小组件，选择该脚本。
+5. 在小组件的 **Parameter** 中填写服务器 ID，例如 `955bd53e-531f-4dc8-8705-dc204000fa98`，也可以写成 `id:955bd53e-531f-4dc8-8705-dc204000fa98`。
+
+说明：
+
+- 如需在桌面上下滑动切换服务器，需要添加多个同尺寸 Scriptable 小组件，每个小组件填写不同的服务器 ID，然后在 iOS 桌面将它们叠成小组件堆叠。
+- 小组件会显示服务器在线状态、CPU/RAM/磁盘/流量、实时上下行速率和更新时间。
+- 脚本设置了 60 秒后刷新，但 iOS 会根据系统策略决定实际刷新时间。
 
 ### 主题切换
 
@@ -536,7 +523,7 @@ Windows 系统（Python 版）
 
 1. 进入管理后台 `/#/admin`
 2. 点击服务器行右侧的 **✏️ 编辑** 按钮
-3. 勾选 **Hide from Public** 选项
+3. 勾选 **公开隐藏** 选项
 4. 点击 **保存**
 
 ### 数据库管理
@@ -554,7 +541,7 @@ Windows 系统（Python 版）
 
 > **注意**：
 >
-> - 重建数据库是不可逆操作，请确保已备份重要数据
+> - 清空历史数据是不可逆操作，请确保已备份重要数据
 > - 升级数据库不会删除现有数据，仅会更新表结构
 > - 从旧版本升级到包含 GPU/丢包率监控的新版本后，需要先执行升级数据库，再重新安装或升级探针以采集新字段
 
@@ -565,9 +552,9 @@ Windows 系统（Python 版）
 
 系统包含以下定时任务（UTC 时区）：
 
-| 任务   | 触发时间          | 说明                                    |
-| ---- | ------------- | ------------------------------------- |
-| 离线检测 | `*/1 * * * *` | 每分钟检测离线节点并发送告警 |
+| 任务   | 触发时间          | 说明                                              |
+| ---- | ------------- | ----------------------------------------------- |
+| 离线检测 | `*/1 * * * *` | 每分钟检测离线节点并发送告警                                  |
 | 合并任务 | `0 * * * *`   | 每小时执行，根据日期判断执行：每月1号数据轮换、每月8号清理旧表、每天12:00服务器到期检测 |
 
 </details>
@@ -581,18 +568,20 @@ Windows 系统（Python 版）
 CF-Server-Monitor/
 ├── public/
 │   ├── cf-server-monitor.ps1   # Windows 探针脚本（PowerShell 版，零依赖）
-│   ├── cf-server-monitor.pyw   # Windows 探针脚本（Python 版，带 GUI）
 │   ├── install.sh              # 一键安装脚本 - systemd 系统 (Ubuntu/Debian/CentOS)
 │   ├── install-alpine.sh       # 一键安装脚本 - OpenRC 系统 (Alpine Linux)
 │   ├── install-openwrt.sh      # 一键安装脚本 - procd 系统 (OpenWrt/LEDE)
+│   ├── install-mac.sh          # 一键安装脚本 - macOS (Intel / Apple Silicon)
+│   ├── favicon.ico             # 站点图标
 │   └── logo.svg                # Logo
 ├── src/
 │   ├── index.js                # 后端主入口 - 路由分发 + Durable Object 导出
 │   ├── database/
-│   │   ├── schema.js           # 数据库初始化、历史数据存储
-│   │   └── updateDatabase.js   # 数据库升级处理
+│   │   ├── schema.js             # 数据库初始化、表结构定义
+│   │   ├── indexOptimization.js  # 数据库索引优化
+│   │   └── updateDatabase.js     # 数据库升级处理
 │   ├── durable/
-│   │   └── MetricsBroadcaster.js  # Durable Object：WebSocket 实时推送广播中心
+│   │   └── MetricsBroadcaster.js # Durable Object：WebSocket 实时推送广播中心
 │   ├── middleware/
 │   │   └── auth.js             # 认证中间件
 │   ├── handlers/
@@ -603,44 +592,77 @@ CF-Server-Monitor/
 │   ├── services/
 │   │   └── notification.js     # 通知服务
 │   ├── utils/
+│   │   ├── agentConfig.js      # 探针配置下发
 │   │   ├── cache.js            # 缓存工具
+│   │   ├── common.js           # 通用工具函数
+│   │   ├── cors.js             # CORS 处理
+│   │   ├── errors.js           # 错误类型与响应封装
+│   │   ├── metrics.js          # 指标处理工具
 │   │   └── settings.js         # 设置管理
 │   └── frontend/               # Vue 3 前端应用
+│       ├── App.vue             # 根组件
+│       ├── main.js             # 前端入口
 │       ├── components/         # Vue 组件
 │       │   ├── Footer.vue
 │       │   ├── ServerCard.vue
 │       │   └── TerminalHeader.vue
-│       ├── views/              # 页面视图
-│       │   ├── Admin.vue
-│       │   ├── Dashboard.vue    # 首页（接入 WebSocket 实时推送）
-│       │   └── ServerDetail.vue # 详情页（接入 WebSocket 实时推送）
+│       ├── composables/        # 通用组合式函数
+│       │   ├── usePasswordVisibility.js
+│       │   └── useTheme.js
 │       ├── router/
 │       │   └── index.js        # Vue Router 配置
-│       ├── utils/
-│       │   ├── api.js          # API 请求封装 + WebSocket 客户端
-│       │   └── i18n.js         # 国际化配置
 │       ├── styles/             # 样式文件
 │       │   ├── light.css
 │       │   └── main.css
-│       ├── App.vue             # 根组件
-│       └── main.js             # 前端入口
+│       ├── utils/
+│       │   ├── api.js          # API 请求封装 + WebSocket 客户端
+│       │   ├── config.js       # 前端运行时配置
+│       │   ├── constants.js    # 前端常量
+│       │   ├── http.js         # HTTP 请求封装
+│       │   ├── i18n.js         # 国际化配置
+│       │   ├── time.js         # 时间格式化工具
+│       │   └── turnstile.js    # Turnstile 共享工具
+│       └── views/              # 页面视图
+│           ├── admin/          # 管理后台（拆分为独立模块）
+│           │   ├── index.vue   # 管理后台主入口
+│           │   ├── components/ # 后台子组件
+│           │   │   ├── AdminLogin.vue
+│           │   │   ├── CopyCommandModal.vue
+│           │   │   ├── DatabasePanel.vue
+│           │   │   ├── DeleteServerModal.vue
+│           │   │   ├── EditServerModal.vue
+│           │   │   ├── ServerTable.vue
+│           │   │   └── SettingsPanel.vue
+│           │   └── composables/
+│           │       └── useTurnstile.js
+│           ├── Dashboard.vue    # 首页（接入 WebSocket 实时推送）
+│           └── ServerDetail.vue # 服务器详情页（历史图表 + 实时推送）
 ├── scripts/
-│   └── build.js                # 前端构建脚本
+│   ├── build.js                 # 前端构建脚本
+│   ├── build-github-page.js     # GitHub Pages 构建脚本
+│   └── ios-scriptable-widget.js # iOS Scriptable 小组件
 ├── test/
 │   ├── README.md               # 测试工具说明
-│   └── generate-sql.js         # 测试数据生成工具
-│   ├── mock-sender.sh          # 模拟数据发送脚本（macOS）
+│   ├── agent-config.js         # 探针配置下发测试
+│   ├── api-check.js            # 本地 API 检查工具
+│   ├── generate-sql.js         # 测试数据生成工具
+│   ├── mock-data.sql           # 模拟数据 SQL
+│   └── mock-sender.sh          # 模拟数据发送脚本（macOS）
 ├── index.html
 ├── jsconfig.json               # JS 配置
-├── package.json
+├── package.json                # 项目依赖与 npm scripts
+├── package-lock.json           # npm 依赖锁定文件
 ├── vite.config.js              # Vite 配置
-├── wrangler.toml               # 本地测试 wrangler 配置
+├── wrangler.toml               # Wrangler 本地开发配置
 ├── API.md                      # 后端 API 文档
+├── AGENT_CONFIG.md             # 探针配置下发说明
+├── develop.md                  # 开发与架构说明
 ├── theme-develop.md            # 前端主题开发文档
 ├── todo.md                     # 待办事项列表
 └── .github/
     └── workflows/
-        └── deploy.yml          # GitHub Actions 自动部署
+        ├── deploy.yml             # GitHub Actions 自动部署到 Workers
+        └── deploy-github-page.yml # GitHub Pages 自动部署
 ```
 
 </details>
@@ -660,7 +682,7 @@ CF-Server-Monitor/
 
 **Q: 探针安装后不显示数据？**
 
-检查服务器是否能访问 Worker URL，在安装命令参数后面加入` -debug=1`（目前仅支持linux系统），再查看探针日志：`journalctl -u cf-probe -f`，将错误信息发到Issue或者TG群，调试结束后删掉debug=1参数重新安装，避免日志过大。
+检查服务器是否能访问 Worker URL，在安装命令参数后面加入 ` -debug=1`（目前仅支持linux系统），再查看探针日志：`journalctl -u cf-probe -f`，将错误信息发到Issue或者TG群，调试结束后删掉debug=1参数重新安装，避免日志过大。
 
 **Q: 如何更换 API\_SECRET？**
 
@@ -673,7 +695,7 @@ Cloudflare D1 免费版提供 5GB 存储和 5M 读取行/日、100K 写入行/�
 写入行：1台服务器一天占用写入行是1.44k，免费写入额度是100k/天，理论上可用支持60+服务器的监控，如果修改上报频率为120秒可用翻倍。
 
 读取行：1台服务器一天占用读行是8k左右，如果开启站点兼容，大概是1.6k，免费读行是5M/天，非常充裕
-主要是前端访问消耗的次数，限制了非登录用户1小时以上的查看，只要不被暴力刷额度，绝对够用，如果不放心，可用在后台开启Turnstile人机验证，或者也可以选择仅登录查看
+主要是前端访问消耗的次数，限制了非登录用户 1 小时以上的查看，只要不被暴力刷额度，绝对够用。如果不放心，可以在后台开启 Turnstile 人机验证，也可以选择仅登录查看。
 
 **Q: D1 数据库免费额度超出扣费吗？**
 
@@ -684,7 +706,7 @@ Cloudflare D1 免费版提供 5GB 存储和 5M 读取行/日、100K 写入行/�
 可以尝试在后台数据库管理中：
 
 - 升级数据库：尝试修复数据库结构问题
-- 重置数据库：清空并重建数据库（⚠️ 注意：此操作将清除所有数据，请确保已备份重要信息）
+- 清空历史数据：清空数据库中的历史数据（⚠️ 注意：此操作将清除所有历史数据，请确保已备份重要信息）
 
 **Q: 忘记密码？**
 
@@ -728,10 +750,10 @@ Cloudflare D1 免费版提供 5GB 存储和 5M 读取行/日、100K 写入行/�
 
 ### 开发步骤
 
-根目录新建 `.env` 文件，添加环境变量默认API\_SECRET：
+根目录新建 `.env` 文件，添加默认 `API_SECRET`：
 
 ```bash
-API_SECRET = "123456"
+API_SECRET=123456
 ```
 
 然后执行以下命令进行本地开发：
@@ -743,8 +765,11 @@ npm install
 # 创建 D1 数据库（首次）
 npx wrangler d1 create server-monitor-db
 
-# 前端开发模式（热重载）
+# 启动本地 Worker（默认 https://localhost:8787）
 npm run dev
+
+# 单独启动前端 Vite 开发模式（默认 http://localhost:5173）
+npm run dev:frontend
 
 # 构建前端生产版本
 npm run build:frontend
@@ -828,5 +853,4 @@ MIT License
 - [Vite](https://vitejs.dev/)
 - [Chart.js](https://www.chartjs.org/)
 - [Leaflet](https://leafletjs.com/)
-- 感谢 [LINUX DO](https://linux.do/) [NodeSeek](https://www.nodeseek.com/post-763025-1) 社区的支持与推广
-
+- 感谢 [NodeSeek](https://www.nodeseek.com/post-763025-1)  [LINUX DO](https://linux.do/) 社区的支持与推广
