@@ -10,12 +10,6 @@ const publicDir = path.join(rootDir, 'public');
 const distDir = path.join(rootDir, 'dist');
 
 console.log('Cleaning dist directory...');
-let existingConfigJson = null;
-const distConfigPath = path.join(distDir, 'config.json');
-if (fs.existsSync(distConfigPath)) {
-  existingConfigJson = fs.readFileSync(distConfigPath, 'utf8');
-  console.log('Preserved existing config.json from dist');
-}
 if (fs.existsSync(distDir)) {
   fs.removeSync(distDir);
 }
@@ -27,11 +21,6 @@ console.log('Copying static assets...');
 if (fs.existsSync(publicDir)) {
   fs.copySync(publicDir, distDir, { overwrite: false });
   console.log('Copied all static assets');
-}
-
-if (existingConfigJson && !fs.existsSync(distConfigPath)) {
-  fs.writeFileSync(distConfigPath, existingConfigJson, 'utf8');
-  console.log('Restored existing config.json');
 }
 
 // 重命名为 dashboard.html，避免 ASSETS 直接拦截首页

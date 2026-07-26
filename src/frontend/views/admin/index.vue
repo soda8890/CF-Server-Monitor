@@ -34,7 +34,7 @@
             <span class="prompt">$</span> {{ trans.sudoStatus }}
           </div>
           <div class="header-actions">
-            <button @click="loadServers" class="btn" :disabled="adminSiteLoading">↻ {{ trans.refresh }}</button>
+            <button @click="refreshServers" class="btn" :disabled="adminSiteLoading">↻ {{ trans.refresh }}</button>
             <select
               v-if="isMultipleMode"
               v-model.number="selectedApiIndex"
@@ -92,6 +92,11 @@
             :class="{ active: activeTab === 'database' }"
             @click="activeTab = 'database'"
           >▸ {{ trans.dbManagement }}</button>
+          <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'themeStore' }"
+            @click="activeTab = 'themeStore'"
+          >▸ {{ trans.themeStore }}</button>
         </div>
 
         <ServerTable
@@ -103,6 +108,7 @@
           :groups="groups"
           :active-tab="activeTab"
           :selected-api-index="selectedApiIndex"
+          :latest-agent-version="latestAgentVersion"
           :copied-server-id="copiedServerId"
           :copied-note-server-id="copiedNoteServerId"
           @add-server="addServer"
@@ -119,6 +125,7 @@
         />
 
         <SettingsPanel
+          ref="settingsPanelRef"
           :trans="trans"
           :settings="settings"
           :password-visible="passwordVisible"
@@ -141,7 +148,13 @@
           :trans="trans"
           :active-tab="activeTab"
           :db-loading="dbLoading"
+          :selected-api-index="selectedApiIndex"
           @open-db-modal="openDbModal"
+        />
+
+        <ThemeStorePanel
+          :trans="trans"
+          :active-tab="activeTab"
         />
       </div>
 
@@ -153,7 +166,32 @@
         :settings="settings"
         @save="saveEdit"
         @close="closeEditModal"
+        @toggle-auto-update="handleAutoUpdateToggle"
       />
+
+      <div v-if="showAutoUpdateWarning" id="autoUpdateWarningModal" class="modal-overlay auto-update-warning-modal active">
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <div class="modal-title">{{ trans.autoUpdateRiskTitle }}</div>
+            <button class="modal-close" @click="cancelAutoUpdateWarning">✕</button>
+          </div>
+
+          <div class="danger-box mb-4">
+            <div class="flex-center-gap-sm mb-2">
+              <span class="danger-icon text-xl">⚠️</span>
+              <span class="danger-label">{{ trans.autoUpdateRiskTitle }}</span>
+            </div>
+            <p class="text-secondary text-sm line-height-1-6">
+              {{ trans.autoUpdateRiskDesc }}
+            </p>
+          </div>
+
+          <div class="modal-footer flex-justify-between">
+            <button @click="confirmAutoUpdateWarning" class="btn btn-primary">{{ trans.autoUpdateRiskConfirm }}</button>
+            <button @click="cancelAutoUpdateWarning" class="btn">{{ trans.autoUpdateRiskCancel }}</button>
+          </div>
+        </div>
+      </div>
 
       <DeleteServerModal
         :trans="trans"
@@ -176,7 +214,6 @@
         :target-os="targetOs"
         :collect-interval="collectInterval"
         :report-interval="reportInterval"
-        :ping-mode="pingMode"
         :custom-ct="customCt"
         :custom-cu="customCu"
         :custom-cm="customCm"
@@ -184,6 +221,7 @@
         :reset-day="resetDay"
         :rx-correction="rxCorrection"
         :tx-correction="txCorrection"
+        :auto-update="autoUpdate"
         :install-command="getCustomInstallCommand()"
         :copied-cmd="copiedCmd"
         @close="closeCopyModal"
@@ -414,14 +452,18 @@ import AdminLogin from './components/AdminLogin.vue'
 import ServerTable from './components/ServerTable.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import DatabasePanel from './components/DatabasePanel.vue'
+import ThemeStorePanel from './components/ThemeStorePanel.vue'
 import EditServerModal from './components/EditServerModal.vue'
 import DeleteServerModal from './components/DeleteServerModal.vue'
 import CopyCommandModal from './components/CopyCommandModal.vue'
-import { adminApi, login, logout as apiLogout, upgradeDatabase, clearHistory, getApiBases } from '../../utils/api'
+import { adminApi, login, logout as apiLogout, upgradeDatabase, clearHistory, getApiBases, fetchConfig } from '../../utils/api'
 import { hasMultipleApiBases } from '../../utils/config.js'
 import { t, useTranslation } from '../../utils/i18n'
+import { PING_NODE_FIELDS, validatePingNode } from '../../utils/pingNode.js'
+import { normalizeDisplayMode, resolveDisplayMode } from '../../utils/displayMode.js'
 import { usePasswordVisibility } from '../../composables/usePasswordVisibility'
 import { useTurnstile } from './composables/useTurnstile'
+import { detectBillingCycle, detectCurrencySymbol, normalizeBillingCycle, normalizeCurrency, normalizePrice, renewExpireDateIfNeeded } from '../../../utils/serverBilling.js'
 
 const trans = useTranslation()
 const route = useRoute()
@@ -433,6 +475,45 @@ const getMessage = (msg) => {
     return translated !== msg ? translated : msg
   }
   return ''
+}
+
+const normalizeTgNotifySetting = (value) => {
+  if (value === true || value === 'true') return '5'
+  if (value === false || value === 'false' || value === undefined || value === null || value === '') return '0'
+
+  const minutes = Number(value)
+  if (Number.isInteger(minutes) && (minutes === 0 || (minutes >= 2 && minutes <= 30))) {
+    return String(minutes)
+  }
+
+  return '0'
+}
+
+const isTgNotifyEnabled = (value) => normalizeTgNotifySetting(value) !== '0'
+
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const formatThemeOptions = (value) => {
+  const normalized = value === undefined || value === null ? {} : value
+  try {
+    return JSON.stringify(normalized, null, 2)
+  } catch (_) {
+    return '{}'
+  }
+}
+
+const parseThemeOptions = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return { valid: true, value: {} }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!isPlainObject(parsed)) {
+      return { valid: false }
+    }
+    return { valid: true, value: parsed }
+  } catch (_) {
+    return { valid: false }
+  }
 }
 
 const formatNumber = (value) => Number(value || 0).toLocaleString()
@@ -476,6 +557,7 @@ const servers = ref([])
 const selectedServers = ref([])
 const stats = ref({ total: '-', online: 0, offline: 0, avg_cpu: 0 })
 const groups = ref(['Default'])
+const latestAgentVersion = ref('')
 const newServerName = ref('')
 const newServerGroup = ref('')
 
@@ -484,13 +566,15 @@ const settings = ref({
   custom_bg: '',
   custom_head: '',
   custom_script: '',
+  display_mode: 'bar',
+  theme_options: '{}',
   is_public: false,
   show_price: true,
   show_expire: true,
   show_tf: true,
   show_time: true,
   show_long_history: false,
-  tg_notify: 'false',
+  tg_notify: '0',
   expire_reminder: 'false',
   tg_bot_token: '',
   tg_chat_id: '',
@@ -506,7 +590,9 @@ const settings = ref({
   custom_ct: '',
   custom_cu: '',
   custom_cm: '',
-  custom_bd: ''
+  custom_bd: '',
+  csp_static: '',
+  csp_api: ''
 })
 const apiSecret = ref('')
 const changeAdminPassword = ref(false)
@@ -542,19 +628,22 @@ const editForm = ref({
   tags: '',
   note: '',
   price: '',
+  billing_cycle: 'month',
+  auto_renewal: false,
+  currency: '¥',
   expire_date: '',
   traffic_limit: '',
   traffic_calc_type: 'total',
   reset_day: 1,
   collect_interval: 0,
   report_interval: 60,
-  ping_mode: 'tcp',
   custom_ct: '',
   custom_cu: '',
   custom_cm: '',
   custom_bd: '',
   rx_correction: '',
   tx_correction: '',
+  auto_update: false,
   is_hidden: false,
   offline_notify_disabled: false
 })
@@ -568,6 +657,7 @@ const deleteTargetOs = ref('linux')
 const uninstallCopied = ref(false)
 const saving = ref(false)
 
+
 const showDbModal = ref(false)
 const dbOperation = ref('')
 const dbLoading = ref(false)
@@ -576,10 +666,14 @@ const d1UsageLoading = ref(false)
 const d1UsageResult = ref(null)
 const validationError = ref(null)
 const alertMessage = ref(null)
+const showAutoUpdateWarning = ref(false)
+const autoUpdatePendingEnable = ref(false)
 
 const testNotificationLoading = ref(false)
 
 const saveResult = ref(null)
+
+const settingsPanelRef = ref(null)
 
 const showCopyModal = ref(false)
 const copyServerId = ref('')
@@ -587,7 +681,6 @@ const currentServerName = ref('')
 const targetOs = ref('linux')
 const collectInterval = ref(0)
 const reportInterval = ref(60)
-const pingMode = ref('tcp')
 const customCt = ref('')
 const customCu = ref('')
 const customCm = ref('')
@@ -595,7 +688,29 @@ const customBd = ref('')
 const resetDay = ref(1)
 const rxCorrection = ref('')
 const txCorrection = ref('')
+const autoUpdate = ref(false)
 const copiedCmd = ref(false)
+
+const getPingNodeLabel = (field) => ({
+  custom_ct: trans.value.customCt,
+  custom_cu: trans.value.customCu,
+  custom_cm: trans.value.customCm,
+  custom_bd: trans.value.customBd
+})[field] || field
+
+const getPingNodeValidation = (source) => {
+  const values = {}
+  for (const field of PING_NODE_FIELDS) {
+    const result = validatePingNode(source[field])
+    if (!result.valid) {
+      return { valid: false, field }
+    }
+    values[field] = result.value
+  }
+  return { valid: true, values }
+}
+
+const buildPingNodeError = (field) => `${getPingNodeLabel(field)}: ${trans.value.invalidPingNodeFormat}`
 
 const copyTextToClipboard = async (text) => {
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -657,8 +772,11 @@ const handleLogin = async () => {
     syncApiIndexQuery()
     clearTurnstile()
     turnstileVerified.value = hasSharedTurnstileVerified()
-    loadSettings()
-    loadServers()
+    await Promise.all([
+      loadSettings(),
+      loadServers(),
+      loadLatestAgentVersion()
+    ])
   } else {
     loginError.value = result.status === 403 ? 'Please complete the verification' : trans.value.errorInvalidUsername
     loginForm.value.password = ''
@@ -671,6 +789,7 @@ const handleLogin = async () => {
 const logout = async () => {
   apiLogout()
   isLoggedIn.value = false
+  latestAgentVersion.value = ''
   clearTurnstile()
   await loadTurnstileConfig()
 }
@@ -689,8 +808,11 @@ const initAdmin = async () => {
     if (savedTurnstileToken) {
       turnstileToken.value = savedTurnstileToken
     }
-    loadSettings()
-    loadServers()
+    await Promise.all([
+      loadSettings(),
+      loadServers(),
+      loadLatestAgentVersion()
+    ])
   } else {
     await loadTurnstileConfig()
   }
@@ -726,7 +848,8 @@ const switchAdminSite = async () => {
   try {
     await Promise.all([
       loadSettings(),
-      loadServers()
+      loadServers(),
+      loadLatestAgentVersion()
     ])
   } finally {
     adminSiteLoading.value = false
@@ -736,6 +859,16 @@ const switchAdminSite = async () => {
 const handleAdminApiIndexChange = async () => {
   syncApiIndexQuery()
   await switchAdminSite()
+}
+
+const loadLatestAgentVersion = async () => {
+  try {
+    const config = await fetchConfig(selectedApiIndex.value)
+    latestAgentVersion.value = config?.last_agent_version || ''
+  } catch (e) {
+    console.error('[ERROR] Load latest agent version failed:', e)
+    latestAgentVersion.value = ''
+  }
 }
 
 const loadSettings = async () => {
@@ -749,13 +882,15 @@ const loadSettings = async () => {
         custom_bg: settingsData.custom_bg || '',
         custom_head: settingsData.custom_head || '',
         custom_script: settingsData.custom_script || '',
+        display_mode: resolveDisplayMode(settingsData),
+        theme_options: formatThemeOptions(settingsData.theme_options),
         is_public: settingsData.is_public === 'true',
         show_price: settingsData.show_price === 'true',
         show_expire: settingsData.show_expire === 'true',
         show_tf: settingsData.show_tf === 'true',
         show_time: settingsData.show_time === 'true',
         show_long_history: settingsData.show_long_history === 'true',
-        tg_notify: settingsData.tg_notify || 'false',
+        tg_notify: normalizeTgNotifySetting(settingsData.tg_notify),
         expire_reminder: settingsData.expire_reminder || 'false',
         tg_bot_token: settingsData.tg_bot_token || '',
         tg_chat_id: settingsData.tg_chat_id || '',
@@ -772,7 +907,9 @@ const loadSettings = async () => {
         custom_ct: settingsData.custom_ct || '',
         custom_cu: settingsData.custom_cu || '',
         custom_cm: settingsData.custom_cm || '',
-        custom_bd: settingsData.custom_bd || ''
+        custom_bd: settingsData.custom_bd || '',
+        csp_static: settingsData.csp_static || '',
+        csp_api: settingsData.csp_api || ''
       }
       changeAdminPassword.value = false
       apiSecret.value = data.api_secret || ''
@@ -784,6 +921,8 @@ const loadSettings = async () => {
 
 const saveSettings = async () => {
   if (saving.value) return
+
+  validationError.value = null
 
   const jwtSecret = settings.value.jwt_secret
   if (jwtSecret && jwtSecret.length > 0 && jwtSecret.length < 32) {
@@ -824,9 +963,29 @@ const saveSettings = async () => {
     }
   }
 
-  if (settings.value.tg_notify === 'true' || settings.value.expire_reminder === 'true') {
+  if (isTgNotifyEnabled(settings.value.tg_notify) || settings.value.expire_reminder === 'true') {
     if (!settings.value.tg_bot_token || settings.value.tg_bot_token.trim().length === 0) {
       validationError.value = trans.value.tgBotTokenRequired
+      return
+    }
+  }
+
+  const pingNodeValidation = getPingNodeValidation(settings.value)
+  if (!pingNodeValidation.valid) {
+    validationError.value = buildPingNodeError(pingNodeValidation.field)
+    return
+  }
+
+  const themeOptionsResult = parseThemeOptions(settings.value.theme_options)
+  if (!themeOptionsResult.valid) {
+    validationError.value = trans.value.invalidThemeOptionsFormat
+    return
+  }
+
+  if (settingsPanelRef.value) {
+    const cspStaticValid = settingsPanelRef.value.validateCspField('csp_static')
+    const cspApiValid = settingsPanelRef.value.validateCspField('csp_api')
+    if (!cspStaticValid || !cspApiValid) {
       return
     }
   }
@@ -841,13 +1000,17 @@ const saveSettings = async () => {
       custom_bg: settings.value.custom_bg,
       custom_head: settings.value.custom_head,
       custom_script: settings.value.custom_script,
+      display_mode: normalizeDisplayMode(settings.value.display_mode),
+      appearance_options: {
+        theme_options: themeOptionsResult.value
+      },
       is_public: settings.value.is_public ? 'true' : 'false',
       show_price: settings.value.show_price ? 'true' : 'false',
       show_expire: settings.value.show_expire ? 'true' : 'false',
       show_tf: settings.value.show_tf ? 'true' : 'false',
       show_time: settings.value.show_time ? 'true' : 'false',
       show_long_history: settings.value.show_long_history ? 'true' : 'false',
-      tg_notify: settings.value.tg_notify,
+      tg_notify: normalizeTgNotifySetting(settings.value.tg_notify),
       expire_reminder: settings.value.expire_reminder,
       tg_bot_token: settings.value.tg_bot_token,
       tg_chat_id: settings.value.tg_chat_id,
@@ -858,10 +1021,12 @@ const saveSettings = async () => {
       cloudflare_account_id: settings.value.cloudflare_account_id,
       cloudflare_token: settings.value.cloudflare_token,
       username: settings.value.username,
-      custom_ct: settings.value.custom_ct,
-      custom_cu: settings.value.custom_cu,
-      custom_cm: settings.value.custom_cm,
-      custom_bd: settings.value.custom_bd
+      custom_ct: pingNodeValidation.values.custom_ct,
+      custom_cu: pingNodeValidation.values.custom_cu,
+      custom_cm: pingNodeValidation.values.custom_cm,
+      custom_bd: pingNodeValidation.values.custom_bd,
+      csp_static: settings.value.csp_static || '',
+      csp_api: settings.value.csp_api || ''
     }
   }
 
@@ -907,6 +1072,13 @@ const loadServers = async () => {
   }
 }
 
+const refreshServers = async () => {
+  await Promise.all([
+    loadServers(),
+    loadLatestAgentVersion()
+  ])
+}
+
 const addServer = async () => {
   const name = newServerName.value.trim()
   if (!name) {
@@ -944,6 +1116,7 @@ const getUninstallCommand = () => {
   const script = deleteTargetOs.value === 'alpine' ? 'install-alpine.sh'
     : deleteTargetOs.value === 'openwrt' ? 'install-openwrt.sh'
     : deleteTargetOs.value === 'mac' ? 'install-mac.sh'
+    : deleteTargetOs.value === 'synology' ? 'install-synology.sh'
     : 'install.sh'
   return `curl -sL ${HOST}/${script} | ${sudoPrefix}${shell} -s uninstall`
 }
@@ -955,7 +1128,6 @@ const copyCmd = (serverId) => {
   targetOs.value = 'linux'
   collectInterval.value = server?.collect_interval ?? 0
   reportInterval.value = server?.report_interval || 60
-  pingMode.value = server?.ping_mode || 'http'
   customCt.value = server?.custom_ct || settings.value.custom_ct
   customCu.value = server?.custom_cu || settings.value.custom_cu
   customCm.value = server?.custom_cm || settings.value.custom_cm
@@ -963,6 +1135,7 @@ const copyCmd = (serverId) => {
   resetDay.value = server?.reset_day ?? 1
   rxCorrection.value = server?.rx_correction ?? ''
   txCorrection.value = server?.tx_correction ?? ''
+  autoUpdate.value = server?.auto_update === '1' || server?.auto_update === 1 || server?.auto_update === true
   copiedCmd.value = false
   showCopyModal.value = true
 }
@@ -971,6 +1144,7 @@ const hasCorrectionValue = (value) => value !== null && value !== undefined && v
 
 const getCustomInstallCommand = () => {
   const HOST = selectedApiBase.value
+  const autoUpdateFlag = autoUpdate.value ? 1 : 0
   if (targetOs.value === 'windows') {
     const params = [
       'install',
@@ -979,8 +1153,8 @@ const getCustomInstallCommand = () => {
       `-Url '${HOST}/update'`,
       `-CollectInterval ${collectInterval.value}`,
       `-ReportInterval ${reportInterval.value}`,
-      `-PingType ${pingMode.value}`,
-      `-ResetDay ${resetDay.value ?? 1}`
+      `-ResetDay ${resetDay.value ?? 1}`,
+      `-AutoUpdate ${autoUpdateFlag}`
     ]
     if (customCt.value) params.push(`-CtNode '${customCt.value}'`)
     if (customCu.value) params.push(`-CuNode '${customCu.value}'`)
@@ -995,8 +1169,9 @@ const getCustomInstallCommand = () => {
   const script = targetOs.value === 'alpine' ? 'install-alpine.sh'
     : targetOs.value === 'openwrt' ? 'install-openwrt.sh'
     : targetOs.value === 'mac' ? 'install-mac.sh'
+    : targetOs.value === 'synology' ? 'install-synology.sh'
     : 'install.sh'
-  let cmd = `curl -sL ${HOST}/${script} | ${sudoPrefix}${shell} -s install -id=${copyServerId.value} -secret='${apiSecret.value}' -url=${HOST}/update -collect_interval=${collectInterval.value} -interval=${reportInterval.value} -ping=${pingMode.value} -reset_day=${resetDay.value ?? 1}`
+  let cmd = `curl -sL ${HOST}/${script} | ${sudoPrefix}${shell} -s install -id=${copyServerId.value} -secret='${apiSecret.value}' -url=${HOST}/update -collect_interval=${collectInterval.value} -interval=${reportInterval.value} -reset_day=${resetDay.value ?? 1} -auto_update=${autoUpdateFlag}`
   if (customCt.value) cmd += ` -ct=${customCt.value}`
   if (customCu.value) cmd += ` -cu=${customCu.value}`
   if (customCm.value) cmd += ` -cm=${customCm.value}`
@@ -1053,20 +1228,23 @@ const openEditModal = (server) => {
     server_group: server.server_group || '',
     tags: server.tags || '',
     note: server.note || '',
-    price: server.price || '',
+    price: normalizePrice(server.price),
+    billing_cycle: normalizeBillingCycle(detectBillingCycle(server.price) || server.billing_cycle),
+    auto_renewal: server.auto_renewal === '1' || server.auto_renewal === 1 || server.auto_renewal === true,
+    currency: normalizeCurrency(server.currency || detectCurrencySymbol(server.price) || '¥'),
     expire_date: server.expire_date || '',
     traffic_limit: server.traffic_limit || '',
     traffic_calc_type: server.traffic_calc_type || 'total',
     reset_day: server.reset_day ?? 1,
     collect_interval: server.collect_interval ?? 0,
     report_interval: server.report_interval || 60,
-    ping_mode: server.ping_mode || 'http',
     custom_ct: server.custom_ct || '',
     custom_cu: server.custom_cu || '',
     custom_cm: server.custom_cm || '',
     custom_bd: server.custom_bd || '',
     rx_correction: server.rx_correction ?? '',
     tx_correction: server.tx_correction ?? '',
+    auto_update: server.auto_update === '1' || server.auto_update === 1 || server.auto_update === true,
     is_hidden: server.is_hidden === '1',
     offline_notify_disabled: server.offline_notify_disabled === '1'
   }
@@ -1075,10 +1253,57 @@ const openEditModal = (server) => {
 }
 
 const closeEditModal = () => {
+  cancelAutoUpdateWarning()
   showEditModal.value = false
 }
 
+const handleAutoUpdateToggle = (nextValue) => {
+  if (!nextValue) {
+    editForm.value.auto_update = false
+    cancelAutoUpdateWarning()
+    return
+  }
+  autoUpdatePendingEnable.value = true
+  showAutoUpdateWarning.value = true
+}
+
+const confirmAutoUpdateWarning = () => {
+  if (autoUpdatePendingEnable.value) {
+    editForm.value.auto_update = true
+  }
+  autoUpdatePendingEnable.value = false
+  showAutoUpdateWarning.value = false
+}
+
+const cancelAutoUpdateWarning = () => {
+  autoUpdatePendingEnable.value = false
+  showAutoUpdateWarning.value = false
+}
+
 const saveEdit = async () => {
+  validationError.value = null
+
+  const pingNodeValidation = getPingNodeValidation(editForm.value)
+  if (!pingNodeValidation.valid) {
+    validationError.value = buildPingNodeError(pingNodeValidation.field)
+    return
+  }
+
+  const normalizedBillingCycle = normalizeBillingCycle(editForm.value.billing_cycle)
+  const normalizedAutoRenewal = editForm.value.auto_renewal ? '1' : '0'
+  const normalizedPrice = normalizePrice(editForm.value.price)
+  const normalizedCurrency = normalizeCurrency(editForm.value.currency || detectCurrencySymbol(editForm.value.price) || '¥')
+  const normalizedExpireDate = renewExpireDateIfNeeded(
+    editForm.value.expire_date,
+    normalizedBillingCycle,
+    normalizedAutoRenewal
+  ).expire_date
+
+  editForm.value.price = normalizedPrice
+  editForm.value.currency = normalizedCurrency
+  editForm.value.billing_cycle = normalizedBillingCycle
+  editForm.value.expire_date = normalizedExpireDate
+
   const data = {
     action: 'edit',
     id: editForm.value.id,
@@ -1086,20 +1311,23 @@ const saveEdit = async () => {
     server_group: editForm.value.server_group,
     tags: editForm.value.tags,
     note: editForm.value.note,
-    price: editForm.value.price,
-    expire_date: editForm.value.expire_date,
+    price: normalizedPrice,
+    billing_cycle: normalizedBillingCycle,
+    auto_renewal: normalizedAutoRenewal,
+    currency: normalizedCurrency,
+    expire_date: normalizedExpireDate,
     traffic_limit: editForm.value.traffic_limit,
     traffic_calc_type: editForm.value.traffic_calc_type,
     reset_day: editForm.value.reset_day,
     collect_interval: editForm.value.collect_interval,
     report_interval: editForm.value.report_interval,
-    ping_mode: editForm.value.ping_mode,
-    custom_ct: editForm.value.custom_ct,
-    custom_cu: editForm.value.custom_cu,
-    custom_cm: editForm.value.custom_cm,
-    custom_bd: editForm.value.custom_bd,
+    custom_ct: pingNodeValidation.values.custom_ct,
+    custom_cu: pingNodeValidation.values.custom_cu,
+    custom_cm: pingNodeValidation.values.custom_cm,
+    custom_bd: pingNodeValidation.values.custom_bd,
     rx_correction: editForm.value.rx_correction,
     tx_correction: editForm.value.tx_correction,
+    auto_update: editForm.value.auto_update ? '1' : '0',
     is_hidden: editForm.value.is_hidden ? '1' : '0',
     offline_notify_disabled: editForm.value.offline_notify_disabled ? '1' : '0'
   }
@@ -1108,6 +1336,7 @@ const saveEdit = async () => {
     const result = await adminApiForSite(data)
     if (!result.error) {
       saveResult.value = { success: true, message: getMessage(result.data.message) || trans.value.serverEdited }
+      cancelAutoUpdateWarning()
       showEditModal.value = false
       loadServers()
     } else {

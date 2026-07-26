@@ -5,12 +5,14 @@ import { handleAdminAPI } from './handlers/admin.js';
 import { serveFrontend } from './handlers/frontend.js';
 import { handleUpdate, handleWebSocketUpgrade } from './handlers/update.js';
 import { handleServerAPI, handleServersAPI } from './handlers/dashboard.js';
+import { handleTheme } from './handlers/theme.js';
 import { loadSettings, loadSiteSettings, loadAppearanceOptions, setDebug, debug, getCurrentVersion } from './utils/settings.js';
 import { checkAuth, simpleAuthResponse } from './middleware/auth.js';
 import { getServerDetail, getMetricsHistoryCache, setMetricsHistoryCache, getCacheDuration } from './utils/cache.js';
 import { AppError, createSuccessResponse, createUnauthorizedResponse, createBadRequestResponse, createNotFoundResponse, createErrorResponse } from './utils/errors.js';
 import { verifyTurnstileToken } from './utils/common.js';
 import { getCorsAllowedOrigins, createOptionsResponse, applyCors } from './utils/cors.js';
+import { getRemoteVersion } from './utils/version.js';
 // Durable Objects: 实时指标广播
 // 显式 import + extends，确保 wrangler 静态分析器能在入口文件直接识别此 DO 类
 import { MetricsBroadcaster as _MetricsBroadcaster }
@@ -254,26 +256,37 @@ export default {
         }
 
         const isLoggedIn = await checkAuth(request, env, sys);
+        const remoteVersion = isLoggedIn ? await getRemoteVersion() : null;
 
         return createSuccessResponse({
           version: getCurrentVersion(),
+          ...(isLoggedIn ? {
+            last_workers_version: remoteVersion?.workers || null,
+            last_agent_version: remoteVersion?.agent || null
+          } : {}),
           is_public: sys.is_public === 'true',
           authorization: isLoggedIn,
           turnstile_enabled: turnstileEnabled,
           turnstile_login_enabled: turnstileEnabled || turnstileLoginEnabled,
           turnstile_site_key: sys.turnstile_site_key || '',
           site_title: appearanceOptions.site_title || '',
+          display_mode: appearanceOptions.display_mode || 'bar',
+          theme_options: appearanceOptions.theme_options || {},
           verified: verified,
           turnstile_verified: turnstileVerified,
           show_long_history: sys.show_long_history === 'true'
         });
+      }},
+      { method: 'GET', path: '/theme', handler: async () => {
+        const themeStore = await handleTheme()
+        return createSuccessResponse(themeStore)
       }},
       { method: 'GET', path: '/api/server', handler: async () => {
         await ensureSiteSettings();
         return handleServerAPI(request, env, sys);
       }},
       { method: 'GET', path: '/api/servers', handler: async () => {
-        await ensureSiteSettings();
+        await ensureFullSettings();
         return handleServersAPI(request, env, sys);
       }},
       { method: 'GET', path: '/api/ws', handler: async () => handleWebSocketUpgrade(request, env) },
@@ -282,7 +295,7 @@ export default {
         await ensureSiteSettings();
         const id = url.searchParams.get('id');
         const hours = parseFloat(url.searchParams.get('hours') || '24');
-        const allColumns = 'cpu, gpu, gpu_info, ram_total, ram_used, disk_total, disk_used, processes, net_in_speed, net_out_speed, tcp_conn, udp_conn, ping_ct, ping_cu, ping_cm, ping_bd, loss_ct, loss_cu, loss_cm, loss_bd, swap_total, swap_used, load_avg, region';
+        const allColumns = 'cpu, gpu_info, ram_total, ram_used, disk_total, disk_used, processes, net_in_speed, net_out_speed, tcp_conn, udp_conn, ping_ct, ping_cu, ping_cm, ping_bd, loss_ct, loss_cu, loss_cm, loss_bd, swap_total, swap_used, load_avg, region';
         // 后续版本可以删掉region 字段，用于升级数据库提示
         return fetchHistoryData(env, request, id, hours, allColumns, sys);
       }},
